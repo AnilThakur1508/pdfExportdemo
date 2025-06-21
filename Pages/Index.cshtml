@@ -1,10 +1,186 @@
 ﻿@page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home page";
+    ViewData["Title"] = "Upload and Annotate PDF";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
-</div>
+<h2>Upload PDF</h2>
+
+<form method="post" enctype="multipart/form-data">
+    <input type="file" name="PdfFile" required />
+    <button type="submit">Upload</button>
+</form>
+
+@if (Model.UploadedFilePath != null)
+{
+    <hr />
+    <div>
+        <div id="toolbar">
+            <button onclick="setDrawingMode('rectangle')">Draw Rectangle</button>
+            <button onclick="setDrawingMode('circle')">Draw Circle</button>
+            <button onclick="undo()">⮌ Undo</button>
+            <button onclick="redo()">⮕ Redo</button>
+            <button onclick="saveAsImage()">Close</button>
+        </div>
+
+
+    </div>
+
+    <canvas id="pdf-canvas" style="border:1px solid #000; margin-top: 10px;"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        const url = '@Model.UploadedFilePath';
+        const canvas = document.getElementById("pdf-canvas");
+        const ctx = canvas.getContext("2d");
+
+        let drawingMode = null;
+        let isDrawing = false;
+        let startX = 0, startY = 0;
+
+        let undoStack = [];
+        let redoStack = [];
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        // Load PDF
+        pdfjsLib.getDocument(url).promise.then(function (pdf) {
+            return pdf.getPage(1);
+        }).then(function (page) {
+            const viewport = page.getViewport({ scale: 1.5 });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            const renderContext = {
+                canvasContext: ctx,
+                viewport: viewport
+            };
+
+            return page.render(renderContext).promise.then(() => {
+                pushToUndoStack(); // Save initial background as first state
+            });
+        });
+
+        function setDrawingMode(mode) {
+            drawingMode = mode;
+        }
+
+        canvas.addEventListener('mousedown', function (e) {
+            if (!drawingMode) return;
+            isDrawing = true;
+
+            const rect = canvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousemove', function (e) {
+            if (!isDrawing || !drawingMode) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            restoreCanvasSnapshot(undoStack[undoStack.length - 1]);
+
+                  if (drawingMode === 'rectangle') {
+            ctx.strokeStyle = 'blue';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(startX, startY, mouseX - startX, mouseY - startY);
+        } else if (drawingMode === 'circle') {
+            const radiusX = Math.abs(mouseX - startX) / 2;
+            const radiusY = Math.abs(mouseY - startY) / 2;
+            const centerX = startX + (mouseX - startX) / 2;
+            const centerY = startY + (mouseY - startY) / 2;
+
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        });
+
+        canvas.addEventListener('mouseup', function () {
+            if (!drawingMode || !isDrawing) return;
+
+            pushToUndoStack(); // Save the current state after drawing
+            redoStack = [];    // Clear redo stack after new action
+
+            isDrawing = false;
+            drawingMode = null;
+        });
+
+        function pushToUndoStack() {
+            undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        }
+
+        function restoreCanvasSnapshot(imageData) {
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function undo() {
+            if (undoStack.length <= 1) return; // Don't remove initial state
+
+            const last = undoStack.pop();
+            redoStack.push(last);
+            const previous = undoStack[undoStack.length - 1];
+            restoreCanvasSnapshot(previous);
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+
+            const image = redoStack.pop();
+            undoStack.push(image);
+            restoreCanvasSnapshot(image);
+        }
+                      async function saveAsImage() {
+            const uploadedFilePath = '@(Model.UploadedFilePath ?? "")';
+
+            if (!uploadedFilePath) {
+                alert("No PDF/image uploaded to save.");
+                const canvas = document.getElementById("pdf-canvas");
+                const toolbar = document.getElementById("toolbar");
+                if (toolbar) toolbar.style.display = "none";
+                if (canvas) canvas.style.display = "none";
+                return;
+            }
+
+            const canvas = document.getElementById("pdf-canvas");
+            if (!canvas) {
+                alert("Canvas not found.");
+                return;
+            }
+
+            const dataUrl = canvas.toDataURL("image/png");
+
+            // ✅ Use jsPDF
+            const { jsPDF } = window.jspdf;
+
+            const pdf = new jsPDF({
+                orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
+
+            // ❗️Fix for scaling issues: adjust the dimensions if needed
+            pdf.addImage(dataUrl, 'PNG', 0, 0, canvas.width, canvas.height);
+            pdf.save('annotated.pdf');
+
+            // ✅ Optional: Reset
+            setTimeout(() => {
+                const ctx = canvas.getContext("2d");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                document.getElementById("toolbar").style.display = "none";
+                canvas.style.display = "none";
+                window.location.reload();
+            }, 500);
+        }
+
+    </script>
+
+}
