@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("pdfExxportDemo")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+33a4b97ece8c6c146c9a8cc23019b6efb3d249ac")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+98646beee9a7c6b73ba82097d4c6be7db417a0ae")]
 [assembly: System.Reflection.AssemblyProductAttribute("pdfExxportDemo")]
 [assembly: System.Reflection.AssemblyTitleAttribute("pdfExxportDemo")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
